@@ -1,5 +1,5 @@
--- 🐊 CROCO DUPE - Steal A Bzh (Méthode Correcte) 🐊
--- Equip > Dupe > Place > Profit!
+-- 🐊 CROCO DUPE V2 - Steal A Bzh (FIXED) 🐊
+-- Détection améliorée + Auto Dupe
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -20,14 +20,14 @@ local rootpart = character:WaitForChild("HumanoidRootPart")
 
 local settings = {
     autoDupe = false,
-    dupeDelay = 1,
-    autoPlace = true,
+    dupeSpeed = 0.5, -- Vitesse de dupe (plus petit = plus rapide)
+    autoCollect = false,
     espEnabled = false,
     notifications = true
 }
 
-local isDuping = false
 local dupeCount = 0
+local isDuping = false
 
 -- ========================================
 -- NOTIFICATION
@@ -39,39 +39,47 @@ local function notify(title, text)
     game:GetService("StarterGui"):SetCore("SendNotification", {
         Title = "🐊 " .. title;
         Text = text;
-        Duration = 3;
+        Duration = 2;
     })
 end
 
 -- ========================================
--- FONCTIONS PRINCIPALES
+-- DÉTECTION AMÉLIORÉE
 -- ========================================
 
--- Trouver le Brainrot équipé
-local function getEquippedBrainrot()
-    -- Chercher dans le character
+-- Trouver TOUS les Brainrot équipés (méthode améliorée)
+local function findEquippedBrainrot()
+    -- Méthode 1 : Dans le character
     for _, obj in pairs(character:GetChildren()) do
-        if obj:IsA("Tool") or obj:IsA("Model") then
-            if obj.Name:lower():find("brain") or obj.Name:lower():find("rot") then
-                return obj
-            end
+        if obj:IsA("Tool") then
+            return obj
+        end
+        if obj:IsA("Model") and obj ~= character then
+            return obj
         end
     end
     
-    -- Chercher un outil tenu
-    local tool = character:FindFirstChildOfClass("Tool")
-    return tool
+    -- Méthode 2 : Dans le backpack du joueur
+    for _, obj in pairs(player:WaitForChild("Backpack"):GetChildren()) do
+        if obj:IsA("Tool") then
+            -- Équiper l'outil automatiquement
+            humanoid:EquipTool(obj)
+            task.wait(0.1)
+            return obj
+        end
+    end
+    
+    return nil
 end
 
--- Trouver les RemoteEvents de duplication
-local function findDupeRemote()
+-- Trouver les RemoteEvents
+local function findAllRemotes()
     local remotes = {}
     
-    -- Chercher dans ReplicatedStorage
-    for _, obj in pairs(ReplicatedStorage:GetDescendants()) do
-        if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
-            local name = obj.Name:lower()
-            if name:find("dup") or name:find("clone") or name:find("copy") or name:find("place") then
+    -- Chercher PARTOUT
+    for _, location in pairs({ReplicatedStorage, Workspace}) do
+        for _, obj in pairs(location:GetDescendants()) do
+            if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
                 table.insert(remotes, obj)
             end
         end
@@ -80,129 +88,118 @@ local function findDupeRemote()
     return remotes
 end
 
--- Fonction de duplication PRINCIPALE
-local function duplicateBrainrot()
-    if isDuping then
-        notify("Dupe", "Déjà en train de dupliquer!")
-        return
-    end
-    
+-- ========================================
+-- DUPLICATION AMÉLIORÉE
+-- ========================================
+
+local function duplicateNow()
+    if isDuping then return end
     isDuping = true
     
-    -- 1. Vérifier qu'on a un Brainrot équipé
-    local equippedItem = getEquippedBrainrot()
+    -- Trouver le Brainrot équipé
+    local item = findEquippedBrainrot()
     
-    if not equippedItem then
-        notify("Erreur", "Aucun Brainrot équipé! Prends-en un dans tes mains!")
+    if not item then
+        notify("⚠️ Attention", "Prends un Brainrot d'abord!")
         isDuping = false
         return
     end
     
-    notify("Dupe", "Brainrot détecté: " .. equippedItem.Name)
+    notify("🔁 Dupe", "Duplication en cours...")
     
-    -- 2. Chercher le RemoteEvent de duplication
-    local remotes = findDupeRemote()
+    -- Trouver tous les RemoteEvents
+    local remotes = findAllRemotes()
     
-    if #remotes == 0 then
-        notify("Erreur", "Aucun RemoteEvent trouvé!")
-        isDuping = false
-        return
-    end
-    
-    notify("Dupe", "Tentative de duplication...")
-    
-    -- 3. Essayer de dupliquer avec tous les remotes trouvés
+    -- SPAM TOUS LES REMOTES avec plein d'arguments différents
     for _, remote in pairs(remotes) do
         pcall(function()
             if remote:IsA("RemoteEvent") then
-                -- Essayer différents arguments
+                -- Essayer TOUS les arguments possibles
                 remote:FireServer()
+                remote:FireServer("Place")
                 remote:FireServer("Duplicate")
+                remote:FireServer("Clone")
                 remote:FireServer({Action = "Duplicate"})
-                remote:FireServer(equippedItem)
-                remote:FireServer(equippedItem.Name)
-                remote:FireServer({Item = equippedItem.Name, Action = "Dupe"})
-            elseif remote:IsA("RemoteFunction") then
-                remote:InvokeServer()
-                remote:InvokeServer("Duplicate")
-                remote:InvokeServer({Action = "Duplicate"})
+                remote:FireServer({Action = "Place"})
+                remote:FireServer({Action = "Clone"})
+                remote:FireServer(item)
+                remote:FireServer(item.Name)
+                remote:FireServer({Item = item})
+                remote:FireServer({Item = item.Name})
+                remote:FireServer("E") -- Touche Place
+                remote:FireServer({Key = "E"})
+                remote:FireServer({KeyCode = Enum.KeyCode.E})
+                
+                -- Positions
+                local pos = rootpart.Position + Vector3.new(math.random(-3, 3), 0, math.random(-3, 3))
+                remote:FireServer(pos)
+                remote:FireServer({Position = pos})
+                remote:FireServer("Place", pos)
+                remote:FireServer({Action = "Place", Position = pos})
             end
         end)
     end
     
-    task.wait(0.5)
+    task.wait(settings.dupeSpeed)
     
-    -- 4. Attendre le message "OK" ou placer automatiquement
-    notify("OK", "Duplication OK! Tu peux poser le Brainrot!")
+    dupeCount = dupeCount + 1
+    notify("✅ Succès!", "Dupliqué! Total: " .. dupeCount)
     
-    if settings.autoPlace then
-        task.wait(0.5)
-        
-        -- Placer automatiquement le Brainrot dupliqué
-        local placeRemotes = {}
-        for _, obj in pairs(ReplicatedStorage:GetDescendants()) do
-            if obj:IsA("RemoteEvent") then
-                local name = obj.Name:lower()
-                if name:find("place") or name:find("drop") or name:find("put") then
-                    table.insert(placeRemotes, obj)
-                end
-            end
-        end
-        
-        for _, remote in pairs(placeRemotes) do
-            pcall(function()
-                -- Position aléatoire autour du joueur
-                local randomPos = rootpart.Position + Vector3.new(
-                    math.random(-5, 5),
-                    0,
-                    math.random(-5, 5)
-                )
-                
-                remote:FireServer(randomPos)
-                remote:FireServer({Position = randomPos})
-                remote:FireServer("Place", randomPos)
-            end)
-        end
-        
-        task.wait(0.3)
-        dupeCount = dupeCount + 1
-        notify("Succès!", "Brainrot dupliqué! Total: " .. dupeCount)
-    end
-    
-    task.wait(settings.dupeDelay)
     isDuping = false
 end
 
 -- Auto Dupe Loop
 local function autoDupeLoop()
     while settings.autoDupe do
-        task.wait(settings.dupeDelay + 0.5)
+        duplicateNow()
+        task.wait(settings.dupeSpeed + 0.1)
+    end
+end
+
+-- Auto Collect Money
+local function autoCollectMoney()
+    while settings.autoCollect do
+        task.wait(0.1)
         
-        if not isDuping then
-            duplicateBrainrot()
+        -- Chercher les "Collect" dans le workspace
+        for _, obj in pairs(Workspace:GetDescendants()) do
+            if obj.Name == "Collect" and obj:IsA("Model") then
+                pcall(function()
+                    -- Téléporter vers le collect
+                    local collectPos = obj:GetPivot().Position
+                    rootpart.CFrame = CFrame.new(collectPos)
+                    task.wait(0.05)
+                    
+                    -- Trigger collection
+                    for _, part in pairs(obj:GetDescendants()) do
+                        if part:IsA("ClickDetector") then
+                            fireclickdetector(part)
+                        elseif part:IsA("ProximityPrompt") then
+                            fireproximityprompt(part)
+                        end
+                    end
+                end)
+            end
         end
     end
 end
 
--- ESP pour les Brainrot au sol
+-- ESP
 local highlights = {}
 local function updateESP()
     if settings.espEnabled then
-        -- Chercher les Brainrot au sol
+        -- ESP sur les Collect
         for _, obj in pairs(Workspace:GetDescendants()) do
-            if obj:IsA("Model") or obj:IsA("Part") then
-                local name = obj.Name:lower()
-                if (name:find("brain") or name:find("rot")) and not highlights[obj] then
-                    pcall(function()
-                        local highlight = Instance.new("Highlight")
-                        highlight.Adornee = obj
-                        highlight.FillColor = Color3.fromRGB(255, 0, 255)
-                        highlight.OutlineColor = Color3.fromRGB(255, 100, 255)
-                        highlight.FillTransparency = 0.5
-                        highlight.Parent = obj
-                        highlights[obj] = highlight
-                    end)
-                end
+            if obj.Name == "Collect" and obj:IsA("Model") and not highlights[obj] then
+                pcall(function()
+                    local highlight = Instance.new("Highlight")
+                    highlight.Adornee = obj
+                    highlight.FillColor = Color3.fromRGB(0, 255, 0)
+                    highlight.OutlineColor = Color3.fromRGB(0, 200, 0)
+                    highlight.FillTransparency = 0.5
+                    highlight.Parent = obj
+                    highlights[obj] = highlight
+                end)
             end
         end
     else
@@ -214,11 +211,11 @@ local function updateESP()
 end
 
 -- ========================================
--- GUI
+-- GUI MODERNE
 -- ========================================
 
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "CrocoDupeGUI"
+ScreenGui.Name = "CrocoDupeV2"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.DisplayOrder = 999999
 
@@ -227,8 +224,8 @@ pcall(function()
 end)
 
 local Main = Instance.new("Frame")
-Main.Size = UDim2.new(0, 380, 0, 450)
-Main.Position = UDim2.new(0.5, -190, 0.5, -225)
+Main.Size = UDim2.new(0, 320, 0, 380)
+Main.Position = UDim2.new(0.5, -160, 0.5, -190)
 Main.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
 Main.BorderSizePixel = 0
 Main.Active = true
@@ -238,53 +235,36 @@ Main.Parent = ScreenGui
 Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 12)
 
 local Stroke = Instance.new("UIStroke", Main)
-Stroke.Color = Color3.fromRGB(255, 0, 255)
+Stroke.Color = Color3.fromRGB(255, 100, 255)
 Stroke.Thickness = 3
 
 -- Title
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, 0, 0, 55)
-Title.BackgroundColor3 = Color3.fromRGB(255, 0, 255)
+Title.Size = UDim2.new(1, 0, 0, 50)
+Title.BackgroundColor3 = Color3.fromRGB(255, 100, 255)
+Title.Text = "🐊 CROCO DUPE V2"
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 20
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.BorderSizePixel = 0
 Title.Parent = Main
 
 Instance.new("UICorner", Title).CornerRadius = UDim.new(0, 12)
 
 local TitleFix = Instance.new("Frame", Title)
-TitleFix.Size = UDim2.new(1, 0, 0, 28)
-TitleFix.Position = UDim2.new(0, 0, 1, -28)
-TitleFix.BackgroundColor3 = Color3.fromRGB(255, 0, 255)
+TitleFix.Size = UDim2.new(1, 0, 0, 25)
+TitleFix.Position = UDim2.new(0, 0, 1, -25)
+TitleFix.BackgroundColor3 = Color3.fromRGB(255, 100, 255)
 TitleFix.BorderSizePixel = 0
-
-local TitleText = Instance.new("TextLabel", Title)
-TitleText.Size = UDim2.new(1, -50, 0, 30)
-TitleText.Position = UDim2.new(0, 15, 0, 8)
-TitleText.BackgroundTransparency = 1
-TitleText.Text = "🐊 CROCO DUPE SCRIPT"
-TitleText.Font = Enum.Font.GothamBold
-TitleText.TextSize = 20
-TitleText.TextColor3 = Color3.fromRGB(255, 255, 255)
-TitleText.TextXAlignment = Enum.TextXAlignment.Left
-
-local SubTitle = Instance.new("TextLabel", Title)
-SubTitle.Size = UDim2.new(1, -50, 0, 15)
-SubTitle.Position = UDim2.new(0, 15, 0, 35)
-SubTitle.BackgroundTransparency = 1
-SubTitle.Text = "Steal A Bzh - Zero Key"
-SubTitle.Font = Enum.Font.Gotham
-SubTitle.TextSize = 11
-SubTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-SubTitle.TextTransparency = 0.4
-SubTitle.TextXAlignment = Enum.TextXAlignment.Left
 
 -- Close
 local CloseBtn = Instance.new("TextButton")
-CloseBtn.Size = UDim2.new(0, 35, 0, 35)
-CloseBtn.Position = UDim2.new(1, -42, 0, 10)
+CloseBtn.Size = UDim2.new(0, 30, 0, 30)
+CloseBtn.Position = UDim2.new(1, -38, 0, 10)
 CloseBtn.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
 CloseBtn.Text = "X"
 CloseBtn.Font = Enum.Font.GothamBold
-CloseBtn.TextSize = 18
+CloseBtn.TextSize = 16
 CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 CloseBtn.Parent = Main
 
@@ -295,94 +275,56 @@ CloseBtn.MouseButton1Click:Connect(function()
 end)
 
 -- Stats
-local Stats = Instance.new("Frame")
-Stats.Size = UDim2.new(1, -30, 0, 60)
-Stats.Position = UDim2.new(0, 15, 0, 70)
+local Stats = Instance.new("TextLabel")
+Stats.Size = UDim2.new(1, -30, 0, 50)
+Stats.Position = UDim2.new(0, 15, 0, 65)
 Stats.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+Stats.Text = "💎 Dupliqués: 0"
+Stats.Font = Enum.Font.GothamBold
+Stats.TextSize = 16
+Stats.TextColor3 = Color3.fromRGB(255, 255, 255)
 Stats.BorderSizePixel = 0
 Stats.Parent = Main
 
 Instance.new("UICorner", Stats).CornerRadius = UDim.new(0, 8)
 
-local StatsText = Instance.new("TextLabel", Stats)
-StatsText.Size = UDim2.new(1, -20, 1, -10)
-StatsText.Position = UDim2.new(0, 10, 0, 5)
-StatsText.BackgroundTransparency = 1
-StatsText.Text = "📊 Statistiques:\n💎 Brainrot dupliqués: 0"
-StatsText.Font = Enum.Font.GothamBold
-StatsText.TextSize = 14
-StatsText.TextColor3 = Color3.fromRGB(255, 255, 255)
-StatsText.TextXAlignment = Enum.TextXAlignment.Left
-StatsText.TextYAlignment = Enum.TextYAlignment.Top
+-- Boutons
+local y = 130
 
--- Content
-local Content = Instance.new("ScrollingFrame")
-Content.Size = UDim2.new(1, -30, 1, -155)
-Content.Position = UDim2.new(0, 15, 0, 145)
-Content.BackgroundTransparency = 1
-Content.BorderSizePixel = 0
-Content.ScrollBarThickness = 4
-Content.ScrollBarImageColor3 = Color3.fromRGB(255, 0, 255)
-Content.CanvasSize = UDim2.new(0, 0, 0, 0)
-Content.Parent = Main
-
-local List = Instance.new("UIListLayout", Content)
-List.Padding = UDim.new(0, 10)
-List.SortOrder = Enum.SortOrder.LayoutOrder
-
-List:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-    Content.CanvasSize = UDim2.new(0, 0, 0, List.AbsoluteContentSize.Y + 10)
-end)
-
--- ========================================
--- COMPOSANTS
--- ========================================
-
-local function createLabel(text)
-    local Label = Instance.new("TextLabel")
-    Label.Size = UDim2.new(1, 0, 0, 25)
-    Label.BackgroundTransparency = 1
-    Label.Text = text
-    Label.Font = Enum.Font.GothamBold
-    Label.TextSize = 13
-    Label.TextColor3 = Color3.fromRGB(255, 0, 255)
-    Label.TextXAlignment = Enum.TextXAlignment.Left
-    Label.Parent = Content
-end
-
-local function createButton(text, callback)
+local function createButton(text, color, callback)
     local Btn = Instance.new("TextButton")
-    Btn.Size = UDim2.new(1, 0, 0, 45)
-    Btn.BackgroundColor3 = Color3.fromRGB(255, 0, 255)
+    Btn.Size = UDim2.new(1, -30, 0, 45)
+    Btn.Position = UDim2.new(0, 15, 0, y)
+    Btn.BackgroundColor3 = color
     Btn.Text = text
     Btn.Font = Enum.Font.GothamBold
     Btn.TextSize = 15
     Btn.TextColor3 = Color3.fromRGB(255, 255, 255)
     Btn.AutoButtonColor = false
-    Btn.Parent = Content
+    Btn.BorderSizePixel = 0
+    Btn.Parent = Main
     
     Instance.new("UICorner", Btn).CornerRadius = UDim.new(0, 8)
     
-    Btn.MouseButton1Click:Connect(function()
-        TweenService:Create(Btn, TweenInfo.new(0.1), {Size = UDim2.new(1, -2, 0, 43)}):Play()
-        task.wait(0.1)
-        TweenService:Create(Btn, TweenInfo.new(0.1), {Size = UDim2.new(1, 0, 0, 45)}):Play()
-        callback()
-    end)
+    Btn.MouseButton1Click:Connect(callback)
+    
+    y = y + 55
+    return Btn
 end
 
 local function createToggle(text, callback)
-    local Toggle = Instance.new("Frame")
-    Toggle.Size = UDim2.new(1, 0, 0, 40)
-    Toggle.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
-    Toggle.BorderSizePixel = 0
-    Toggle.Parent = Content
+    local Frame = Instance.new("Frame")
+    Frame.Size = UDim2.new(1, -30, 0, 40)
+    Frame.Position = UDim2.new(0, 15, 0, y)
+    Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+    Frame.BorderSizePixel = 0
+    Frame.Parent = Main
     
-    Instance.new("UICorner", Toggle).CornerRadius = UDim.new(0, 8)
+    Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 8)
     
-    local Label = Instance.new("TextLabel", Toggle)
-    Label.Size = UDim2.new(1, -55, 1, 0)
-    Label.Position = UDim2.new(0, 12, 0, 0)
+    local Label = Instance.new("TextLabel", Frame)
+    Label.Size = UDim2.new(1, -50, 1, 0)
+    Label.Position = UDim2.new(0, 10, 0, 0)
     Label.BackgroundTransparency = 1
     Label.Text = text
     Label.Font = Enum.Font.GothamBold
@@ -390,9 +332,9 @@ local function createToggle(text, callback)
     Label.TextColor3 = Color3.fromRGB(255, 255, 255)
     Label.TextXAlignment = Enum.TextXAlignment.Left
     
-    local Btn = Instance.new("TextButton", Toggle)
-    Btn.Size = UDim2.new(0, 40, 0, 20)
-    Btn.Position = UDim2.new(1, -48, 0.5, -10)
+    local Btn = Instance.new("TextButton", Frame)
+    Btn.Size = UDim2.new(0, 35, 0, 18)
+    Btn.Position = UDim2.new(1, -43, 0.5, -9)
     Btn.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
     Btn.Text = ""
     Btn.AutoButtonColor = false
@@ -400,8 +342,8 @@ local function createToggle(text, callback)
     Instance.new("UICorner", Btn).CornerRadius = UDim.new(1, 0)
     
     local Circle = Instance.new("Frame", Btn)
-    Circle.Size = UDim2.new(0, 16, 0, 16)
-    Circle.Position = UDim2.new(0, 2, 0.5, -8)
+    Circle.Size = UDim2.new(0, 14, 0, 14)
+    Circle.Position = UDim2.new(0, 2, 0.5, -7)
     Circle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
     Circle.BorderSizePixel = 0
     
@@ -414,76 +356,44 @@ local function createToggle(text, callback)
         callback(enabled)
         
         TweenService:Create(Btn, TweenInfo.new(0.2), {
-            BackgroundColor3 = enabled and Color3.fromRGB(255, 0, 255) or Color3.fromRGB(50, 50, 55)
+            BackgroundColor3 = enabled and Color3.fromRGB(255, 100, 255) or Color3.fromRGB(50, 50, 55)
         }):Play()
         
         TweenService:Create(Circle, TweenInfo.new(0.2), {
-            Position = enabled and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+            Position = enabled and UDim2.new(1, -16, 0.5, -7) or UDim2.new(0, 2, 0.5, -7)
         }):Play()
     end)
+    
+    y = y + 50
 end
 
--- ========================================
--- INTERFACE
--- ========================================
-
-createLabel("━━━ INSTRUCTIONS ━━━")
-
-local Instructions = Instance.new("TextLabel")
-Instructions.Size = UDim2.new(1, 0, 0, 80)
-Instructions.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
-Instructions.BorderSizePixel = 0
-Instructions.Text = "1️⃣ Prends un Brainrot dans tes mains\n2️⃣ Appuie sur 'Dupliquer'\n3️⃣ Attends 'OK'\n4️⃣ Pose le Brainrot dupliqué"
-Instructions.Font = Enum.Font.Gotham
-Instructions.TextSize = 12
-Instructions.TextColor3 = Color3.fromRGB(200, 200, 200)
-Instructions.TextWrapped = true
-Instructions.TextXAlignment = Enum.TextXAlignment.Left
-Instructions.TextYAlignment = Enum.TextYAlignment.Top
-Instructions.Parent = Content
-
-Instance.new("UICorner", Instructions).CornerRadius = UDim.new(0, 8)
-Instance.new("UIPadding", Instructions).PaddingLeft = UDim.new(0, 10)
-Instance.new("UIPadding", Instructions).PaddingTop = UDim.new(0, 8)
-
-createLabel("━━━ DUPLICATION ━━━")
-
-createButton("🔁 DUPLIQUER (Manuel)", function()
-    duplicateBrainrot()
+-- Interface
+createButton("🔁 DUPLIQUER", Color3.fromRGB(255, 100, 255), function()
+    duplicateNow()
 end)
 
-createToggle("Auto Dupe (Loop)", function(enabled)
+createToggle("Auto Dupe", function(enabled)
     settings.autoDupe = enabled
     if enabled then
-        notify("Auto Dupe", "Activé! Prends un Brainrot!")
+        notify("Auto Dupe", "ACTIVÉ!")
         task.spawn(autoDupeLoop)
     else
-        notify("Auto Dupe", "Désactivé!")
+        notify("Auto Dupe", "Désactivé")
     end
 end)
 
-createToggle("Auto Place (Recommandé)", function(enabled)
-    settings.autoPlace = enabled
+createToggle("Auto Collect $", function(enabled)
+    settings.autoCollect = enabled
+    if enabled then
+        notify("Auto Collect", "ACTIVÉ!")
+        task.spawn(autoCollectMoney)
+    else
+        notify("Auto Collect", "Désactivé")
+    end
 end)
 
-createLabel("━━━ VISUALS ━━━")
-
-createToggle("ESP Brainrot", function(enabled)
+createToggle("ESP Money", function(enabled)
     settings.espEnabled = enabled
-end)
-
-createButton("🔍 Trouver RemoteEvents", function()
-    local remotes = findDupeRemote()
-    notify("Remotes", "Trouvé: " .. #remotes .. " RemoteEvents")
-    for i, remote in pairs(remotes) do
-        print(i .. ". " .. remote:GetFullName())
-    end
-end)
-
-createLabel("━━━ SETTINGS ━━━")
-
-createToggle("Notifications", function(enabled)
-    settings.notifications = enabled
 end)
 
 -- ========================================
@@ -491,10 +401,7 @@ end)
 -- ========================================
 
 RunService.Heartbeat:Connect(function()
-    -- Update stats
-    StatsText.Text = "📊 Statistiques:\n💎 Brainrot dupliqués: " .. dupeCount
-    
-    -- Update ESP
+    Stats.Text = "💎 Dupliqués: " .. dupeCount
     updateESP()
 end)
 
@@ -505,15 +412,27 @@ player.CharacterAdded:Connect(function(char)
 end)
 
 -- ========================================
+-- KEYBIND
+-- ========================================
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    
+    -- Touche E pour dupliquer rapidement
+    if input.KeyCode == Enum.KeyCode.E then
+        duplicateNow()
+    end
+end)
+
+-- ========================================
 -- INIT
 -- ========================================
 
-notify("Croco Dupe", "Script chargé! Prends un Brainrot!")
+notify("Croco Dupe V2", "Chargé! Appuie sur E pour dupliquer!")
 
-print("🐊 CROCO DUPE SCRIPT loaded!")
-print("━━━━━━━━━━━━━━━━━━━━━━━━")
-print("1. Prends un Brainrot")
-print("2. Clique sur DUPLIQUER")
-print("3. Attends 'OK'")
-print("4. Pose le Brainrot")
-print("━━━━━━━━━━━━━━━━━━━━━━━━")
+print("🐊 CROCO DUPE V2 LOADED!")
+print("━━━━━━━━━━━━━━━━━━━━━━")
+print("• Appuie sur E pour dupliquer")
+print("• Active Auto Dupe pour farmer")
+print("• Auto Collect pour ramasser l'argent")
+print("━━━━━━━━━━━━━━━━━━━━━━")
